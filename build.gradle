@@ -1,0 +1,85 @@
+buildscript {
+    repositories {
+        mavenLocal()
+        jcenter()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath "gradle.plugin.com.netflix.nebula:gradle-ospackage-plugin:${gradleOspackagePlugin}"
+        classpath "com.jfrog.bintray.gradle:gradle-bintray-plugin:${gradleBintrayPluginVersion}"
+    }
+}
+
+apply plugin: 'nebula.ospackage'
+apply plugin: 'com.jfrog.bintray'
+
+def distributionTags = ['liquibase']
+
+// in case of conflicts need to use: rpm -iv --replacefiles rpm_name.rpm
+ospackage {
+    packageName = "${distributionPackageName}"
+    version = "${distributionPackageVersion}"
+    release = "${distributionPackageRelease}"
+    user = 'root'
+
+    os = LINUX
+    type = BINARY
+
+    license = "${distributionPackageLicense}"
+    url = "${distributionPackageUrl}"
+    sourcePackage = '-'
+
+    packager = 'Andrey Bogatyrev'
+    buildHost = 'localhost'
+    packageDescription = "${distributionPackageDescription}"
+
+    distributionTags.each {
+        provides("$it")
+    }
+
+    requires('java')
+
+    into '/opt/liquibase'
+
+    from("/resources/liquibase") {}
+
+    postInstall file('/resources/rpm/scripts/postInstall.sh')
+}
+
+apply from: 'properties.gradle'
+
+bintray {
+    user = project.hasProperty('bintrayUser') ? project.property('bintrayUser') : System.getenv('BINTRAY_USER')
+    key = project.hasProperty('bintrayApiKey') ? project.property('bintrayApiKey') : System.getenv('BINTRAY_API_KEY')
+
+    filesSpec {
+        from 'build/distributions'
+        into '.'
+    }
+
+    dryRun = false //[Default: false] Whether to run this as dry-run, without deploying
+    publish = true //[Default: false] Whether version should be auto published after an upload
+    //override = true //[Default: false] Whether to override version artifacts already published - doesn't work...
+
+    pkg {
+        repo = 'avb_helpfull'
+        name = "${distributionPackageName}"
+        desc = "${distributionPackageDescription}"
+        websiteUrl = "${distributionPackageUrl}"
+        licenses = ["${distributionPackageLicense}"]
+        vcsUrl = 'https://github.com/abogatyrev/liquibase-distribution.git'
+        issueTrackerUrl = 'https://github.com/abogatyrev/liquibase-distribution/issues'
+        labels = distributionTags
+        publicDownloadNumbers = true
+        version {
+            name = "${distributionPackageVersion}-${distributionPackageRelease}"
+            vcsTag = '-'
+        }
+    }
+}
+
+task buildAndPublish(dependsOn: [buildRpm, bintrayUpload]){}
+
+bintrayUpload.mustRunAfter([buildRpm])
