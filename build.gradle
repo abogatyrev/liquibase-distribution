@@ -7,13 +7,13 @@ buildscript {
         }
     }
     dependencies {
-        classpath "gradle.plugin.com.netflix.nebula:gradle-ospackage-plugin:${gradleOspackagePlugin}"
-        classpath "com.jfrog.bintray.gradle:gradle-bintray-plugin:${gradleBintrayPluginVersion}"
+        classpath "com.netflix.nebula:gradle-ospackage-plugin:${gradleOspackagePlugin}"
+        classpath "com.netflix.nebula:nebula-publishing-plugin:${nebulaPublishingPluginVersion}"
     }
 }
 
+apply plugin: 'maven'
 apply plugin: 'nebula.ospackage'
-apply plugin: 'com.jfrog.bintray'
 
 def distributionTags = ['liquibase']
 
@@ -50,36 +50,33 @@ ospackage {
 
 apply from: 'properties.gradle'
 
-bintray {
-    user = project.hasProperty('bintrayUser') ? project.property('bintrayUser') : System.getenv('BINTRAY_USER')
-    key = project.hasProperty('bintrayApiKey') ? project.property('bintrayApiKey') : System.getenv('BINTRAY_API_KEY')
-
-    filesSpec {
-        from 'build/distributions'
-        into '.'
-    }
-
-    dryRun = false //[Default: false] Whether to run this as dry-run, without deploying
-    publish = true //[Default: false] Whether version should be auto published after an upload
-    //override = true //[Default: false] Whether to override version artifacts already published - doesn't work...
-
-    pkg {
-        repo = 'avb_helpfull'
-        name = "${distributionPackageName}"
-        desc = "${distributionPackageDescription}"
-        websiteUrl = "${distributionPackageUrl}"
-        licenses = ["${distributionPackageLicense}"]
-        vcsUrl = 'https://github.com/abogatyrev/liquibase-distribution.git'
-        issueTrackerUrl = 'https://github.com/abogatyrev/liquibase-distribution/issues'
-        labels = distributionTags
-        publicDownloadNumbers = true
-        version {
-            name = "${distributionPackageVersion}-${distributionPackageRelease}"
-            vcsTag = '-'
+// upload RPM distributions packages to the Nexus
+// see: https://medium.com/dot-debug/deploying-artifacts-to-maven-using-gradle-b669acc1b6f8
+configurations {
+    distributions
+}
+artifacts {
+    distributions file: new File("${buildDir}/distributions", "${distributionPackageName}-${distributionPackageVersion}-${distributionPackageRelease}.noarch.rpm"),
+            name: "${distributionPackageName}", type: 'rpm', classifier: 'noarch'
+}
+uploadDistributions {
+    description 'Uploads the RPM distributions.'
+    group 'publishing'
+    repositories {
+        mavenDeployer {
+            configuration = configurations.distributions
+            repository(url: 'http://nexus.avbsoft.org/repository/wildfly-distributions/') {
+                authentication(userName: "${nexusUsername}", password: "${nexusPassword}")
+            }
+            pom.version = "${distributionPackageVersion}-${distributionPackageRelease}"
+            pom.whenConfigured { pom -> pom.dependencies.clear() } // not need dependencies...
         }
     }
 }
 
-task buildAndPublish(dependsOn: [buildRpm, bintrayUpload]){}
+task buildAndPublish(dependsOn: [buildRpm, uploadDistributions]) {}
+uploadDistributions.mustRunAfter([buildRpm])
 
-bintrayUpload.mustRunAfter([buildRpm])
+task Wrapper(type: Wrapper) { // run > gradle wrapper
+    gradleVersion = "${gradleVersion}"
+}
