@@ -12,4 +12,4 @@ if [[ ! -f ${LIQUIBAE_PROPERY_FILE_PATH} ]]; then
   exit 1
 fi
 
-java -jar /opt/liquibase/libs/liquibase.jar --defaultsFile=${LIQUIBAE_PROPERY_FILE_PATH} update
+java -cp /opt/liquibase/libs/liquibase.jar:/opt/liquibase/libs/*  liquibase.integration.commandline.Main --defaultsFile=${LIQUIBAE_PROPERY_FILE_PATH} update
