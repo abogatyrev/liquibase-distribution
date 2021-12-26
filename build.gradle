@@ -1,28 +1,63 @@
+apply from: 'properties.gradle'
+
 buildscript {
     repositories {
         mavenLocal()
-        jcenter()
         maven {
             url "https://plugins.gradle.org/m2/"
         }
     }
     dependencies {
         classpath "com.netflix.nebula:gradle-ospackage-plugin:${gradleOspackagePlugin}"
-        classpath "com.netflix.nebula:nebula-publishing-plugin:${nebulaPublishingPluginVersion}"
     }
 }
 
-apply plugin: 'maven'
 apply plugin: 'nebula.ospackage'
+apply plugin: 'maven-publish'
+
+publishing {
+    repositories {
+        maven {
+            name 'distribution'
+            url 'http://nexus.avbsoft.org/repository/distributions/'
+            allowInsecureProtocol true
+
+            credentials {
+                username = "${nexusUsername}"
+                password = "${nexusPassword}"
+            }
+        }
+    }
+    publications {
+        rpm(MavenPublication) {
+//                def distributionPackageVersion = project.version.toString().replace("-SNAPSHOT", "~SNAPSHOT")
+            artifacts {
+                artifact("${buildDir}/distributions/${distributionPackageName}-${project.version}-${distributionPackageRelease}.noarch.rpm") {
+                    artifactId "${distributionPackageName}"
+                    classifier 'noarch'
+                    extension 'rpm'
+                    version "${project.version}-${distributionPackageRelease}"
+                }
+            }
+            pom {
+                packaging = 'rpm'
+                groupId = "${project.group}"
+                version = "${project.version}-${distributionPackageRelease}"
+            }
+        }
+    }
+}
 
 def distributionTags = ['liquibase']
 
 // in case of conflicts need to use: rpm -iv --replacefiles rpm_name.rpm
 ospackage {
     packageName = "${distributionPackageName}"
-    version = "${distributionPackageVersion}"
+    version = "${project.version}"
     release = "${distributionPackageRelease}"
-    user = 'root'
+
+    user = 'wildfly'
+    permissionGroup = 'wildfly'
 
     os = LINUX
     type = BINARY
@@ -31,8 +66,9 @@ ospackage {
     url = "${distributionPackageUrl}"
     sourcePackage = '-'
 
-    packager = 'Andrey Bogatyrev'
-    buildHost = 'localhost'
+    packager = 'A. Bogatyrev'
+    buildHost = '-'
+
     packageDescription = "${distributionPackageDescription}"
 
     distributionTags.each {
@@ -41,42 +77,8 @@ ospackage {
 
     requires('java')
 
-    into '/opt/liquibase'
-
-    from("/resources/liquibase") {}
+    into('/opt/liquibase')
+    from('/resources/liquibase')
 
     postInstall file('/resources/rpm/scripts/postInstall.sh')
-}
-
-apply from: 'properties.gradle'
-
-// upload RPM distributions packages to the Nexus
-// see: https://medium.com/dot-debug/deploying-artifacts-to-maven-using-gradle-b669acc1b6f8
-configurations {
-    distributions
-}
-artifacts {
-    distributions file: new File("${buildDir}/distributions", "${distributionPackageName}-${distributionPackageVersion}-${distributionPackageRelease}.noarch.rpm"),
-            name: "${distributionPackageName}", type: 'rpm', classifier: 'noarch'
-}
-uploadDistributions {
-    description 'Uploads the RPM distributions.'
-    group 'publishing'
-    repositories {
-        mavenDeployer {
-            configuration = configurations.distributions
-            repository(url: 'http://nexus.avbsoft.org/repository/wildfly-distributions/') {
-                authentication(userName: "${nexusUsername}", password: "${nexusPassword}")
-            }
-            pom.version = "${distributionPackageVersion}-${distributionPackageRelease}"
-            pom.whenConfigured { pom -> pom.dependencies.clear() } // not need dependencies...
-        }
-    }
-}
-
-task buildAndPublish(dependsOn: [buildRpm, uploadDistributions]) {}
-uploadDistributions.mustRunAfter([buildRpm])
-
-task Wrapper(type: Wrapper) { // run > gradle wrapper
-    gradleVersion = "${gradleVersion}"
 }
