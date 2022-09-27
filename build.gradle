@@ -75,7 +75,7 @@ ospackage {
         provides("$it")
     }
 
-    requires('java')
+//    requires('java')
 
     into('/opt/liquibase')
     from('/resources/liquibase')
